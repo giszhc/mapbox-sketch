@@ -1,0 +1,54 @@
+{
+  "name": "@giszhc/mapbox-sketch",
+  "version": "0.1.1",
+  "description": "零运行时依赖的 Mapbox 手绘标注引擎：点 / 线 / 面 / 路径文字 / 距离标注 / 面积标注 / 引线标注 / 坐标引线标注，全部绘制在自建 canvas 覆盖层上，支持点选已绘图形直接拖拽编辑。",
+  "keywords": ["mapbox", "mapbox-gl", "draw", "sketch", "annotation", "canvas", "leader", "label"],
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.17.0",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "unpkg": "./dist/index.umd.js",
+  "jsdelivr": "./dist/index.umd.js",
+  "publishConfig": { "access": "public" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.mjs"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.mjs",
+      "require": "./dist/core.cjs",
+      "default": "./dist/core.mjs"
+    },
+    "./dist/index.umd.js": "./dist/index.umd.js",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "README.md", "API.md"],
+  "sideEffects": [
+    "**/*.css",
+    "./dist/index.mjs", "./dist/index.cjs", "./dist/index.umd.js",
+    "./src/lib/index.ts", "./src/lib/shapes/*.ts"
+  ],
+  "peerDependencies": { "mapbox-gl": ">=2.0.0" },
+  "scripts": {
+    "dev": "pnpm --filter @giszhc/mapbox-sketch-example dev",
+    "build": "pnpm build:lib",
+    "build:lib": "vite build --config vite.config.lib.ts && vite build --config vite.config.umd.ts",
+    "build:example": "pnpm --filter @giszhc/mapbox-sketch-example build",
+    "typecheck": "pnpm --filter @giszhc/mapbox-sketch typecheck:lib",
+    "typecheck:lib": "tsc -p tsconfig.lib.json --noEmit",
+    "prepublishOnly": "pnpm typecheck:lib && pnpm build:lib"
+  },
+  "devDependencies": {
+    "@microsoft/api-extractor": "7.59.1",
+    "mapbox-gl": "^3.22.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2",
+    "vite-plugin-dts": "^5.1.0"
+  }
+}

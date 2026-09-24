@@ -1,0 +1,540 @@
+/* =====================================================================
+ * global.css —— 示例页面的**设计令牌 + 全局底色**（reset、字体、Element Plus 主题、
+ * 地图自带控件的皮肤）。
+ *
+ * 面板版式（左面板 / 右抽屉 / 列表 / 错误条 / 遮罩）在 panel.css。
+ *
+ * 设计口径：现代专业 GIS 制图工具 —— 地图是视觉主体，UI 保持安静。
+ *   · 全 UI 只有**一个**彩色：主色 #1677FF。其余全是中性灰阶（slate 系）。
+ *   · 状态色（成功 / 警告 / 错误）只出现在真的表达状态的地方，不做装饰。
+ *   · 层级靠**1px 浅边框 + 极轻阴影**表达，不用厚重投影、不用玻璃拟态、不用渐变。
+ *   · 圆角克制：输入框 / 按钮 6px，卡片 8px，浮层 10px —— 没有 16px+ 的大圆角，
+ *     也没有胶囊按钮。
+ *
+ * ★ 色值只在这里定义一次。新增面板 / 组件请**用变量**（var(--xxx)），
+ *   别再写死十六进制 —— 否则下次调色又要满仓库找。
+ * ===================================================================== */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* =====================================================================
+ * 一、设计令牌
+ * ===================================================================== */
+:root {
+  /* ---- 主色 ---- */
+  --c-primary: #1677ff;
+  --c-primary-hover: #4096ff;
+  --c-primary-active: #0958d9;
+  --c-primary-bg: #eff6ff;        /* 选中态底色 */
+  --c-primary-bg-soft: #f5f9ff;   /* 更浅一档：大面积底、hover 选中 */
+  --c-primary-border: #bfdbfe;    /* 选中态描边 */
+
+  /* ---- 中性色阶 ---- */
+  --c-page: #f8fafc;
+  --c-surface: #ffffff;           /* 卡片 / 面板 / 输入框底 */
+  --c-hover: #f8fafc;             /* 普通 hover 底 */
+  --c-hover-strong: #f1f5f9;      /* 稍强 hover / ghost hover 底 */
+
+  /* ---- 文字 ---- */
+  --c-text: #0f172a;              /* 一级：标题、重要信息 */
+  --c-text-2: #334155;            /* 二级：正文、控件取值 */
+  --c-text-3: #64748b;            /* 三级：辅助说明、标签、图标默认色 */
+  --c-text-4: #94a3b8;            /* 弱：placeholder、禁用说明、空态 */
+  --c-text-disabled: #cbd5e1;
+
+  /* ---- 边框 ---- */
+  --c-border: #e2e8f0;            /* 默认 */
+  --c-border-strong: #cbd5e1;     /* hover */
+  --c-border-soft: #f1f5f9;       /* 行分隔线（列表内部） */
+
+  /* ---- 状态 ---- */
+  --c-success: #22c55e;
+  --c-success-bg: #f0fdf4;
+  --c-warning: #f59e0b;
+  --c-warning-bg: #fffbeb;
+  --c-danger: #ef4444;
+  --c-danger-bg: #fef2f2;
+  --c-info: #1677ff;
+  --c-info-bg: #eff6ff;
+
+  /* ---- 圆角 ---- */
+  --r-sm: 6px;                    /* 输入框 / 按钮 / 小控件 */
+  --r-md: 8px;                    /* 普通卡片、内嵌块 */
+  --r-lg: 10px;                   /* 浮动面板 */
+  --r-pill: 999px;                /* 只给筛选 chip 用 */
+
+  /* ---- 阴影：非常克制，目标是「感觉得到层级，但注意不到阴影」 ---- */
+  --sh-1: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --sh-2: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --sh-3: 0 4px 16px rgba(15, 23, 42, 0.1);
+
+  /* ---- 焦点圈：极轻的蓝色外圈，不是发光 ---- */
+  --sh-focus: 0 0 0 2px rgba(22, 119, 255, 0.1);
+
+  /* ---- 动效：细微、快速、克制 ---- */
+  --ease: 0.15s ease;
+}
+
+/* =====================================================================
+ * 二、字体与页面底色
+ * ===================================================================== */
+html,
+body,
+#app,
+#map {
+  width: 100%;
+  height: 100%;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+body {
+  background: var(--c-page);
+  color: var(--c-text-2);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 整页不滚动：要滚的是面板**自己**（#panel 是 max-height + overflow:auto）。
+   少了这一条，右侧样式面板滑出屏幕的那 0.2 秒会顶出一条横向滚动条。 */
+html,
+body {
+  overflow: hidden;
+}
+
+#map {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* 地图区域统一用默认箭头光标，而不是 mapbox 默认的“抓手”。
+   ★ 必须连 .mapboxgl-canvas-container 一起改：它被 mapbox 自己的 CSS
+   强制成 default，只改外层容器不会覆盖子元素的计算光标，
+   绘制引擎切换 move/grab 光标时也会同时写这两处（见 paint 光标逻辑）。 */
+#map .mapboxgl-canvas-container,
+#map .mapboxgl-canvas-container.mapboxgl-interactive {
+  cursor: default;
+}
+
+/* 滚动条：细、浅、只在面板里出现。默认的粗灰条在浅色面板上非常扎眼 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-border-strong);
+  background-clip: content-box;
+}
+
+/* =====================================================================
+ * 三、Element Plus 主题对齐
+ *
+ * ★ 选择器写成 `:root:root`（而不是 `:root`）是**故意的**：Element Plus 的变量
+ *   定义在它自己的 `:root` 里，而它那几份样式是由组件按需 import 的 —— 注入时机
+ *   排在本文件**之后**，同特异性的 `:root` 会被它盖掉。提一级特异性才压得住，
+ *   且不需要 `!important`。
+ * ===================================================================== */
+:root:root {
+  --el-color-primary: var(--c-primary);
+  --el-color-primary-light-3: #5ca0ff;
+  --el-color-primary-light-5: #8bbbff;
+  --el-color-primary-light-7: #b9d6ff;
+  --el-color-primary-light-8: #d0e4ff;
+  --el-color-primary-light-9: var(--c-primary-bg);
+  --el-color-primary-dark-2: var(--c-primary-active);
+
+  --el-color-success: var(--c-success);
+  --el-color-success-light-9: var(--c-success-bg);
+  --el-color-warning: var(--c-warning);
+  --el-color-warning-light-9: var(--c-warning-bg);
+  --el-color-danger: var(--c-danger);
+  --el-color-danger-light-9: var(--c-danger-bg);
+  --el-color-error: var(--c-danger);
+  --el-color-error-light-9: var(--c-danger-bg);
+  --el-color-info: var(--c-text-3);
+  --el-color-info-light-9: var(--c-hover-strong);
+
+  --el-text-color-primary: var(--c-text);
+  --el-text-color-regular: var(--c-text-2);
+  --el-text-color-secondary: var(--c-text-3);
+  --el-text-color-placeholder: var(--c-text-4);
+  --el-text-color-disabled: var(--c-text-disabled);
+
+  --el-border-color: var(--c-border);
+  --el-border-color-light: #eaf0f6;
+  --el-border-color-lighter: var(--c-border-soft);
+  --el-border-color-extra-light: var(--c-border-soft);
+  --el-border-color-dark: var(--c-border-strong);
+  --el-border-color-darker: #b8c4d4;
+  --el-border-color-hover: var(--c-border-strong);
+
+  --el-fill-color: var(--c-hover-strong);
+  --el-fill-color-light: var(--c-hover);
+  --el-fill-color-lighter: #fbfcfe;
+  --el-fill-color-extra-light: #fdfeff;
+  --el-fill-color-dark: #e8edf3;
+  --el-fill-color-darker: #dde4ec;
+  --el-fill-color-blank: var(--c-surface);
+
+  --el-bg-color: var(--c-surface);
+  --el-bg-color-page: var(--c-page);
+  --el-bg-color-overlay: var(--c-surface);
+
+  --el-border-radius-base: var(--r-sm);
+  --el-border-radius-small: 4px;
+  --el-border-radius-round: 18px;
+
+  --el-box-shadow: var(--sh-3);
+  --el-box-shadow-light: var(--sh-2);
+  --el-box-shadow-lighter: var(--sh-1);
+
+  --el-font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --el-font-size-base: 13px;
+
+  /* 紧凑一档：默认 32px 对「专业工具」偏松，面板里一行行堆起来会太散 */
+  --el-component-size: 30px;
+  --el-component-size-small: 26px;
+  --el-component-size-large: 34px;
+}
+
+/* ---- 按钮：简洁、紧凑，不做厚重的 SaaS 大按钮 ---- */
+.el-button {
+  font-weight: 400;
+  border-radius: var(--r-sm);
+  transition: background-color var(--ease), border-color var(--ease), color var(--ease);
+}
+
+/* 次要按钮（默认样式）：白底 + 浅边框，hover 只动边框与底色 */
+.el-button--default {
+  background: var(--c-surface);
+  border-color: var(--c-border);
+  color: var(--c-text-2);
+}
+
+.el-button--default:hover,
+.el-button--default:focus {
+  background: var(--c-hover);
+  border-color: var(--c-border-strong);
+  color: var(--c-text);
+}
+
+.el-button--default:active {
+  background: var(--c-hover-strong);
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+}
+
+/* 主按钮 */
+.el-button--primary {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: #fff;
+  font-weight: 500;
+}
+
+.el-button--primary:hover,
+.el-button--primary:focus {
+  background: var(--c-primary-hover);
+  border-color: var(--c-primary-hover);
+  color: #fff;
+}
+
+.el-button--primary:active {
+  background: var(--c-primary-active);
+  border-color: var(--c-primary-active);
+  color: #fff;
+}
+
+/* 危险按钮（幽灵态）：平时只是一个中性描边按钮，hover 才变红 —— 破坏性操作用色克制 */
+.el-button--danger.is-plain {
+  background: var(--c-surface);
+  border-color: var(--c-border);
+  color: var(--c-text-2);
+}
+
+.el-button--danger.is-plain:hover,
+.el-button--danger.is-plain:focus {
+  background: var(--c-danger-bg);
+  border-color: var(--c-danger);
+  color: var(--c-danger);
+}
+
+/* 禁用：统一灰阶，不要 Element Plus 那套「主色淡化」 */
+.el-button.is-disabled,
+.el-button.is-disabled:hover {
+  background: var(--c-hover);
+  border-color: var(--c-border);
+  color: var(--c-text-disabled);
+}
+
+/* 按钮内「图标 + 文字」的间距。★ 内容被 Element Plus 包在一层 span 里，
+   所以 gap 得设在那层上 —— 设在 .el-button 上不会有任何效果（它只有一个子元素）。 */
+.el-button > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ---- 输入框 / 下拉 / 数字框：白底浅边框，focus 一圈极轻的蓝 ---- */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  background: var(--c-surface);
+  box-shadow: 0 0 0 1px var(--c-border) inset;
+  border-radius: var(--r-sm);
+  transition: box-shadow var(--ease);
+}
+
+.el-input__wrapper:hover,
+.el-textarea__inner:hover,
+.el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--c-border-strong) inset;
+}
+
+.el-input__wrapper.is-focus,
+.el-textarea__inner:focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--c-primary) inset, var(--sh-focus);
+}
+
+.el-input__inner,
+.el-textarea__inner {
+  color: var(--c-text-2);
+}
+
+.el-input__inner::placeholder,
+.el-textarea__inner::placeholder {
+  color: var(--c-text-4);
+}
+
+/* 数字框内部那个 `.el-input` 不该再画一圈边框（外层的 wrapper 已经画了） */
+.el-input-number .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--c-border) inset;
+}
+
+/* ---- 开关：关态用中性灰，不要 Element Plus 默认的深蓝灰 ---- */
+.el-switch__core {
+  border-color: var(--c-border-strong);
+  background: var(--c-border-strong);
+}
+
+.el-switch.is-checked .el-switch__core {
+  border-color: var(--c-primary);
+  background: var(--c-primary);
+}
+
+/* ---- 滑块：主色轨道 + 白心蓝边滑块 ---- */
+.el-slider__runway {
+  background: var(--c-border-soft);
+  height: 4px;
+}
+
+.el-slider__bar {
+  background: var(--c-primary);
+  height: 4px;
+}
+
+.el-slider__button {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--c-primary);
+  background: var(--c-surface);
+  box-shadow: var(--sh-1);
+}
+
+.el-slider__button-wrapper:hover .el-slider__button {
+  border-color: var(--c-primary-hover);
+}
+
+/* ---- 单选按钮组（方向 / 格式 / 分布方式）----
+   ★ 选中态走 EP 的「checked 三变量」，不正面覆写那条 checked 规则：EP 用的是
+     `.el-radio-button.is-active .el-radio-button__original-radio:not(:disabled) + .el-radio-button__inner`
+     —— 特异性 (0,4,0)，硬刚要写一长串还容易漏。改变量只需压过 EP 的 `.el-radio-button`
+     (0,1,0)，所以取 `.el-radio-group .el-radio-button` (0,2,0) 就够。
+   口径：**浅蓝底 + 蓝字 + 蓝边**，不铺实心主色（同列表的选中态：明显，但不压秤）。 */
+.el-radio-group .el-radio-button {
+  --el-radio-button-checked-bg-color: var(--c-primary-bg);
+  --el-radio-button-checked-text-color: var(--c-primary);
+  --el-radio-button-checked-border-color: var(--c-primary);
+  --el-radio-button-disabled-checked-fill: var(--c-hover);
+}
+
+.el-radio-button__inner {
+  background: var(--c-surface);
+  border-color: var(--c-border);
+  color: var(--c-text-2);
+  font-weight: 400;
+  transition: background-color var(--ease), color var(--ease), border-color var(--ease);
+}
+
+.el-radio-button__inner:hover {
+  background: var(--c-hover);
+  color: var(--c-primary);
+}
+
+/* ---- 下拉面板 / 弹层 ---- */
+.el-popper.is-light,
+.el-select-dropdown,
+.el-picker__popper {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-3);
+}
+
+.el-select-dropdown__item {
+  font-size: 13px;
+  color: var(--c-text-2);
+}
+
+.el-select-dropdown__item.is-hovering {
+  background: var(--c-hover);
+}
+
+.el-select-dropdown__item.is-selected {
+  color: var(--c-primary);
+  font-weight: 500;
+  background: var(--c-primary-bg-soft);
+}
+
+/* ---- 颜色选择器：跟输入框同一个高度与圆角，别在面板里凸出一档 ---- */
+.el-color-picker__trigger {
+  width: var(--el-component-size);
+  height: var(--el-component-size);
+  padding: 3px;
+  border-radius: var(--r-sm);
+  border-color: var(--c-border);
+  transition: border-color var(--ease);
+}
+
+.el-color-picker__trigger:hover {
+  border-color: var(--c-border-strong);
+}
+
+/* 去掉选中色块默认的绿色对勾（那是 EP 的 success 绿，与本 UI 无关）。
+   那个下箭头是「点开调色板」的提示，常驻显示就太吵 —— 压低到只在凑近看时才发现 */
+.el-color-picker__icon {
+  color: #fff;
+  opacity: 0.55;
+}
+
+/* ---- 提示条（el-alert）：错误条自己的皮肤在 panel.css，这里只兜住其它场景 ---- */
+.el-alert {
+  border-radius: var(--r-md);
+}
+
+/* ---- 消息弹层：与浮层同一层质感 ---- */
+.el-message {
+  border-radius: var(--r-md);
+  border-color: var(--c-border);
+  box-shadow: var(--sh-3);
+}
+
+/* =====================================================================
+ * 四、地图自带控件（缩放 / 测量 / 署名）的皮肤
+ *
+ * mapbox 的默认皮肤是「4px 圆角 + 纯黑投影」，与本 UI 的浅边框 + 轻阴影不是一套。
+ * 这里只改皮，**不动尺寸**（按钮仍 29px）：控件列与右下角底图按钮的对齐是按
+ * 现行尺寸实测出来的（见文件末尾那段），改宽度会让那个结论失效。
+ * ===================================================================== */
+.mapboxgl-ctrl-group {
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  box-shadow: var(--sh-2);
+  /* 圆角处裁掉按钮的方角（mapbox 自己没裁，hover 底色会溢出圆角） */
+  overflow: hidden;
+}
+
+.mapboxgl-ctrl-group:not(:empty) {
+  box-shadow: var(--sh-2);
+}
+
+.mapboxgl-ctrl-group button {
+  color: var(--c-text-3);
+  transition: background-color var(--ease), color var(--ease);
+}
+
+.mapboxgl-ctrl-group button + button {
+  border-top: 1px solid var(--c-border-soft);
+}
+
+.mapboxgl-ctrl-group button:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+
+.mapboxgl-ctrl-group button:disabled,
+.mapboxgl-ctrl-group button:disabled:hover {
+  background: transparent;
+  color: var(--c-text-disabled);
+}
+
+/* 地图署名：压到最轻，别跟面板抢视线 */
+.mapboxgl-ctrl-attrib {
+  background: rgba(255, 255, 255, 0.86);
+  border-radius: var(--r-sm);
+  box-shadow: none;
+  font-size: 11px;
+}
+
+.mapboxgl-ctrl-attrib a {
+  color: var(--c-text-3);
+}
+
+/* =====================================================================
+ * 五、测量按钮组（measure-control.ts 生成的 DOM）
+ *
+ * 皮肤继承上面 .mapboxgl-ctrl-group 那一套，这里只补三件事：
+ * SVG 图标尺寸、当前测量模式的高亮、没结果时「清除」的置灰。
+ * 选择器带 .mapboxgl-ctrl-group 前缀是为了稳压 mapbox 自己的 :hover 规则。
+ * ===================================================================== */
+.mapboxgl-ctrl-group.measure-ctrl button {
+  position: relative;
+}
+
+.mapboxgl-ctrl-group.measure-ctrl button svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: auto;
+}
+
+/* 正在测量的那一枚：浅蓝底 + 蓝图标。★ 不用深蓝满铺 —— 地图控件是常驻的，
+   高饱和实心块会一直从地图上跳出来抢注意力（与面板的选中态同一口径）。 */
+.mapboxgl-ctrl-group.measure-ctrl button.measure-btn-active,
+.mapboxgl-ctrl-group.measure-ctrl button.measure-btn-active:hover {
+  background: var(--c-primary-bg);
+  color: var(--c-primary);
+}
+
+/* =====================================================================
+ * 六、右下角控件列的对齐
+ * 整列上移 + 水平对中，与底图按钮成一列。
+ * .bm-fab 是 44px 高、bottom:20px，其顶部在距底 64px 处；上推 72px 留 8px 间隙。
+ * 水平上：mapbox 控件组自带 10px 右外边距、组宽 32px（中心距右缘 26px），
+ * 而 FAB 中心距右缘 42px —— margin-right:16px 把控件列左移 16px，两组中心重合
+ * （headless 实测：FAB 中心 1238 = 控件组中心 1238，dx=0）。
+ * ===================================================================== */
+.mapboxgl-ctrl-bottom-right {
+  margin-bottom: 72px;
+  margin-right: 16px;
+}

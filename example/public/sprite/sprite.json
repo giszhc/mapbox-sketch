@@ -1,0 +1,16 @@
+{
+    "fangkuai": {
+        "height": 100,
+        "width": 100,
+        "pixelRatio": 1,
+        "x": 0,
+        "y": 0
+    },
+    "sanjiao": {
+        "height": 100,
+        "width": 100,
+        "pixelRatio": 1,
+        "x": 100,
+        "y": 0
+    }
+}

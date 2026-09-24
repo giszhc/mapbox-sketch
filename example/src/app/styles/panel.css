@@ -1,0 +1,1050 @@
+/* =====================================================================
+ * panel.css —— 示例页面的**面板版式**（左面板、图形列表、错误条、出图遮罩）。
+ *
+ * 控件本身用 Element Plus（按钮 / 输入框 / 滑块 / 颜色选择器…），这里只负责
+ * 面板容器、行栅格、图形列表行、类型标签这些「版式」部分 —— 配色一律走
+ * global.css 里那套令牌（`var(--c-xxx)`），本文件不写死颜色。
+ *
+ * 分段靠 `.panel-section` 自己的上边框，**不再用 el-divider** ——
+ * 六段之间各插一条 divider 只会把面板切成一堆碎片，层次反而看不清。
+ * ===================================================================== */
+
+/* ---------------- 错误提示条 ----------------
+   挪到底部居中：右上角让给「样式设置」面板。
+   它是临时消息，不该跟常驻面板抢视线（也不该把面板挤走）。
+   ★ 皮肤要压在 el-alert 自己的默认皮上面，所以选择器带上 .el-alert。 */
+#err.el-alert {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: auto;
+  max-width: 70vw;
+  padding: 8px 12px;
+  background: var(--c-danger-bg);
+  border: 1px solid #fecaca;
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+}
+
+#err .el-alert__title {
+  color: #b91c1c;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+#err .el-alert__icon {
+  color: var(--c-danger);
+}
+
+#err .el-alert__close-btn {
+  color: #f0a0a0;
+}
+
+#err .el-alert__close-btn:hover {
+  color: var(--c-danger);
+}
+
+/* ---------------- 出图的忙碌遮罩 ----------------
+   高清导出那几秒里页面本身毫无动静（地图不许动，正是这么设计的），所以必须有这层
+   看得见的东西，否则用户只会以为点漏了、然后再点一次。
+   z-index 取 100：要盖住 #err(20)、#panel(10) 与右侧样式面板，唯独不必盖住
+   Element Plus 的消息层（它是 2000+，若真有消息冒出来，压在上面才对）。
+   ★ 用浅灰白而不是深色：这是「等一下」不是「出事了」，深色遮罩会把地图压死。 */
+.busy {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(248, 250, 252, 0.74);
+  /* 挡住所有点击（本层铺满整屏且默认可命中）：这是防连点的第二道闸，
+     第一道是面板上那个 :disabled 的按钮 —— 两处都要，谁也别指望谁 */
+  cursor: progress;
+}
+
+.busy-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 260px;
+  padding: 20px 26px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-3);
+}
+
+.busy-spin {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--c-border);
+  border-top-color: var(--c-primary);
+  border-radius: 50%;
+  animation: busy-spin 0.9s linear infinite;
+}
+
+@keyframes busy-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.busy-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-text);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* 底图瓦片进度条。宽度固定，免得「确定的条」与「不确定的条」之间跳一下 */
+.busy-bar {
+  position: relative;
+  width: 220px;
+  height: 4px;
+  overflow: hidden;
+  background: var(--c-hover-strong);
+  border-radius: var(--r-pill);
+}
+
+.busy-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--c-primary);
+  border-radius: var(--r-pill);
+  /* 只动宽度：这行是跟着 `onProgress`（最快 250ms 一次）改的，加过渡才不会一格一格跳 */
+  transition: width 0.2s linear;
+}
+
+/* 数不出瓦片总数（宿主地图不是 mapbox-gl、样式还没就绪…）时的兜底：一条来回跑的光带，
+   ★ 不是「卡在 0%」—— 那种静止的条看起来就是坏了。 */
+.busy-bar.unknown::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: var(--c-primary);
+  border-radius: var(--r-pill);
+  animation: busy-bar-run 1.2s ease-in-out infinite;
+}
+
+@keyframes busy-bar-run {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(250%);
+  }
+}
+
+.busy-sub {
+  font-size: 11px;
+  color: var(--c-text-3);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* =====================================================================
+ * 左侧面板 —— 一列固定结构：头部（标题 / 计数 / 两枚图标按钮）
+ *                            + 主体（列表、或按需切到的其它视图）
+ *                            + 底部操作行
+ *
+ * ★ 2026-09-21 改版：面板原来把「建图 / 手绘（41 个按钮）/ 配置 / 列表 / 数据 / 出图」
+ *   六段全竖着堆在一张 320px 卡里，要滚三屏才看见列表 —— 而**列表才是这块面板的主角**。
+ *   现在只有「标注列表」常驻，其余三件事各是一个**按需视图**（选择类型 / 设置 / 导出图片），
+ *   由头部两枚按钮与底部操作行切过去、左上角返回。布局没变复杂，常驻内容从六段变一段。
+ * ===================================================================== */
+#panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  width: 300px;
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  /* 圆角要裁掉头 / 尾那两条满宽分隔线，所以这里 overflow:hidden；
+     滚动交给内部的 .pn-scroll / .pn-list，面板本身不滚 */
+  overflow: hidden;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+  font-size: 13px;
+  color: var(--c-text-2);
+  /* 登场：只往上抬 6px，**不动透明度**。
+     ★ 起手就 opacity:0 的话，动画没推进（页面不产帧）时面板就成了看不见的幽灵 ——
+       而面板是这个页面的主体，宁可「没动」也不能「不见」。理由详见下面
+       pn-panel-in / pn-gate-in 那一段。 */
+  animation: pn-panel-in 0.2s var(--ease);
+}
+
+/* ---- 头部：标题 + 计数 + 图标按钮 ----
+   ★ 内层那一行单独一个盒子（.pn-head-row）是给视图切换动画用的：
+     头部两套内容（列表 / 其他视图）要能各自滑进滑出，`<Transition>` 需要一层元素可挂 class */
+.pn-head {
+  flex: none;
+  padding: 7px 7px 7px 12px;
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.pn-head-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.pn-title {
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 条数：一枚浅灰小胶囊。数字本身就是信息，不必加「共 N 条」这种话 */
+.pn-count {
+  flex: none;
+  min-width: 19px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--c-hover-strong);
+  color: var(--c-text-3);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  text-align: center;
+}
+
+.pn-grow {
+  flex: 1;
+}
+
+.pn-ico {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--c-text-3);
+  cursor: pointer;
+  transition: background-color var(--ease), color var(--ease), border-color var(--ease);
+}
+
+.pn-ico:hover {
+  background: var(--c-hover-strong);
+  color: var(--c-text);
+}
+
+/* ---- 主体容器 ----
+   .pn-listview 列表视图整块（视图切换动画的落点，也是一列 flex）
+   .pn-main     列表视图里「搜索行固定 + 列表滚动」那一段（ShapeList 的根）
+   .pn-scroll   按需视图里的滚动区
+   .pn-view     按需视图的整块内容（自带内边距） */
+.pn-listview,
+.pn-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pn-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pn-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+/* ---- 正在绘制：贴在头部下面的一条状态带 ----
+   它是**实时状态**（现在点地图会落点），必须一眼看见，所以住在列表顶上、浅蓝底 */
+.pn-draw {
+  flex: none;
+  padding: 7px 12px 8px;
+  background: var(--c-primary-bg-soft);
+  border-bottom: 1px solid var(--c-primary-border);
+}
+
+.pn-draw-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pn-draw-x {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 7px;
+  border: 1px solid var(--c-primary-border);
+  border-radius: 4px;
+  background: var(--c-surface);
+  color: var(--c-primary);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+  transition: background-color var(--ease), border-color var(--ease);
+}
+
+.pn-draw-x:hover {
+  background: var(--c-primary-bg);
+  border-color: var(--c-primary);
+}
+
+.pn-draw-hint {
+  margin-top: 4px;
+  color: var(--c-text-2);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.pn-draw-hint b,
+.pn-draw-hint strong {
+  color: var(--c-primary);
+  font-weight: 500;
+}
+
+/* ---- 底部操作行：导入 / 导出 / 出图 ---- */
+.pn-foot {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--c-border-soft);
+}
+
+.pn-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text-2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--ease), border-color var(--ease), color var(--ease);
+}
+
+.pn-btn .ico {
+  color: var(--c-text-3);
+  transition: color var(--ease);
+}
+
+.pn-btn:hover:not(:disabled) {
+  background: var(--c-hover-strong);
+  border-color: var(--c-border-strong);
+  color: var(--c-text);
+}
+
+.pn-btn:hover:not(:disabled) .ico {
+  color: var(--c-text-2);
+}
+
+.pn-btn:disabled {
+  color: var(--c-text-disabled);
+  cursor: not-allowed;
+}
+
+.pn-btn:disabled .ico {
+  color: var(--c-text-disabled);
+}
+
+/* 出图是这一行里的主操作：浅蓝底 + 蓝字，但**不铺实心主色** ——
+   地图才是主体，面板底部不该出现一块抢眼的高饱和色块 */
+.pn-btn.accent {
+  border-color: var(--c-primary-border);
+  background: var(--c-primary-bg-soft);
+  color: var(--c-primary);
+}
+
+.pn-btn.accent .ico {
+  color: var(--c-primary);
+}
+
+.pn-btn.accent:hover:not(:disabled) {
+  background: var(--c-primary-bg);
+  border-color: var(--c-primary);
+}
+
+/* ---- 操作结果提示（导入 / 导出 JSON 的那一句话） ---- */
+.pn-notice {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 0 12px 8px;
+  color: var(--c-text-2);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.pn-notice span {
+  flex: 1;
+  word-break: break-all;
+}
+
+.pn-notice-x {
+  flex: none;
+  display: inline-flex;
+  padding: 1px;
+  border: none;
+  background: none;
+  color: var(--c-text-4);
+  cursor: pointer;
+  transition: color var(--ease);
+}
+
+.pn-notice-x:hover {
+  color: var(--c-text-3);
+}
+
+/* =====================================================================
+ * 面板动效 —— 切换视图 / 展开一条状态带 / 面板整体登场
+ *
+ * 原则：**短、单向、不弹**。工具软件的动效是「让人看清刚才那一下改变的是什么」，
+ * 不是表演 —— 所以只有 0.1~0.2 秒的位移 + 淡入淡出，没有回弹、没有缩放放大。
+ * ★ 视图切换用 mode="out-in"（旧内容先走、新内容再来）：块高不一样，
+ *   不做 out-in 时两块会在同一格里叠着跳一下。
+ * ===================================================================== */
+
+/* ---- 视图切换：进子视图从右滑入，返回时从左滑入 ---- */
+.pn-swap-enter-active,
+.pn-back-enter-active {
+  transition: opacity 0.16s var(--ease), transform 0.16s var(--ease);
+}
+
+.pn-swap-leave-active,
+.pn-back-leave-active {
+  /* 出去比进来快一档：等待感全在「旧内容赖着不走」上 */
+  transition: opacity 0.1s ease, transform 0.1s ease;
+}
+
+.pn-swap-enter-from {
+  opacity: 0;
+  transform: translateX(9px);
+}
+
+.pn-swap-leave-to {
+  opacity: 0;
+  transform: translateX(-9px);
+}
+
+.pn-back-enter-from {
+  opacity: 0;
+  transform: translateX(-9px);
+}
+
+.pn-back-leave-to {
+  opacity: 0;
+  transform: translateX(9px);
+}
+
+/* ---- 面板登场 / 建图卡片登场 ----
+   两者的进场都用**样式表里的 @keyframes**，不用 Vue 的 <Transition> 过渡类。
+   这不是风格问题，是 2026-09-21 修过的真 bug：
+
+     <Transition> 的类（enter-from / enter-active…）是由 nextFrame（两层
+     requestAnimationFrame）补上去的。帧不来，类就补不上，元素就永远停在
+     enter-from 的 `opacity: 0` 上；而 `mode="out-in"` 更狠 —— 它是**等旧节点
+     离场走完才插新节点**的，于是新节点干脆不进 DOM。两种症状是一样的：
+     地图好好的，左侧控件整块消失（用户实测报上来的就是这个）。
+     面板与建图卡片都是「必须看得见」的东西，不该把可见性押在动画帧上。
+
+   CSS 动画是文档时间线自己推进的：JS 一个回调都不需要，不产帧时最多是
+   「停在第一帧」或「直接到位」，不存在「因为没人给我补类所以我永远看不见」。
+   动效本身照旧：面板抬 6px、卡片抬 4px；**都不缩放**（缩放会让面板边框在
+   动画里错位半像素，看着发虚）。 */
+@keyframes pn-panel-in {
+  from {
+    transform: translateY(6px);
+  }
+}
+
+@keyframes pn-gate-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* ---- 一条状态带的展开 / 收起 ----
+   「正在绘制」与「导入结果」这两条是从无到有插进列里的：直接 `v-if` 会让列表
+   当场被顶下去（那一下最硬）。用 grid 的 0fr → 1fr 把高度本身做成过渡 ——
+   不用 max-height 猜数字，也不用 JS 量 scrollHeight。
+
+   ★ 挂在外层的是 Vue 的 `<Transition name="pn-fold" appear>`，`v-if` 也写在**外层**
+     那个 div 上。两个都不能省：
+       · `v-if` 在外层 —— leave 期间 Vue 会把整棵子树留在 DOM 上，内容还在，1fr 才量得出
+         高度。把 `v-if` 写进内层（`<div><Xxx v-if="…" /></div>`）就会「内层先被摘掉、
+         1fr 当场等于 0」，动画一帧跑完（实测：26px → 0px 只用 1 帧，看着就是「啪」地消失）。
+       · `appear` —— 这两条带是**跟着列表视图一起**挂上的（选完类型回到列表那一刻）。
+         没有 appear，只有「已经在 DOM 上再切 class」才有过渡，那一下仍然是硬切。
+     同理，带里的内容在收起期间要**留着上一份**（见 DrawStatus.vue / App.vue 的 last 快照）：
+     内容一空，1fr 就等于 0，轨道没有东西可以缩。 */
+.pn-fold {
+  flex: none;
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.pn-fold > * {
+  overflow: hidden;
+}
+
+.pn-fold-enter-active,
+.pn-fold-leave-active {
+  transition: grid-template-rows 0.2s var(--ease);
+}
+
+.pn-fold-enter-from,
+.pn-fold-leave-to {
+  grid-template-rows: 0fr;
+}
+
+/* 尊重系统的「减少动态效果」：留个几乎为零的时长，过渡事件照常触发（不留会让
+   Vue 的 transition 钩子等不到）；面板与卡片的登场是 @keyframes，这里直接关掉。 */
+@media (prefers-reduced-motion: reduce) {
+  .pn-swap-enter-active,
+  .pn-swap-leave-active,
+  .pn-back-enter-active,
+  .pn-back-leave-active,
+  .pn-fold-enter-active,
+  .pn-fold-leave-active {
+    transition-duration: 0.01ms;
+  }
+
+  #panel,
+  .gate {
+    animation: none;
+  }
+}
+
+.panel-section {
+  margin-bottom: 12px;
+}
+
+.panel-section > .title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+  color: var(--c-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* 段标题的图标比文字轻一档：它是索引，不是内容 */
+.panel-section > .title .ico {
+  color: var(--c-text-3);
+}
+
+/* 段与段之间一条极浅分隔线，比 el-divider 轻，也不占额外高度 */
+.panel-section + .panel-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--c-border-soft);
+}
+
+/* 段标题下的一句灰字注脚（比标题轻、比说明文字短） */
+.panel-section > .hint {
+  margin: -3px 0 7px;
+  color: var(--c-text-3);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.panel-section > .hint b {
+  color: var(--c-text-2);
+  font-weight: 500;
+}
+
+/* ---------------- 一行「标签 + 控件」的统一栅格 ----------------
+   全项目只有这一套行版式，三种变体：
+     .form-row          标签左（88px）、控件右
+     .form-row.switch   标签占满、开关贴右缘 —— 几个开关排成一条竖线
+     .form-row.stack    标签在上、控件占满整行（滑块 + 数字框这种宽控件）
+   dim = 该行对当前聚焦图形无意义，标签置灰（控件本身由 Vue 侧 :disabled 控制，
+   这里不做 pointer-events 遮挡，否则 Element Plus 的 tooltip / 滑块拖动会出问题）。 */
+.form-row {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  align-items: center;
+  gap: 8px;
+  margin: 7px 0;
+}
+
+.form-row > .label {
+  color: var(--c-text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.form-row.dim > .label {
+  color: var(--c-text-disabled);
+}
+
+.form-row.switch {
+  grid-template-columns: 1fr auto;
+}
+
+.form-row.stack {
+  grid-template-columns: 1fr;
+  gap: 4px;
+  margin: 9px 0;
+}
+
+/* ---------------- 选择绘制类型（按需视图） ----------------
+   41 个类型改成**单列**列表：300px 的面板里两列会让「分队战斗行动尾标注」这类
+   长名字全被省略号截掉一半 —— 而截掉的那一半正是用来区分同类类型的。
+   单列 + 组标题 + 搜索框，滚起来长一点，但每一行都读得全。 */
+.pn-picker {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pn-search {
+  flex: none;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--c-border-soft);
+}
+
+.pn-group + .pn-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--c-border-soft);
+}
+
+.pn-group-title {
+  padding: 0 2px 5px;
+  color: var(--c-text-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pn-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+}
+
+.pn-type {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--c-text-2);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ease), border-color var(--ease), color var(--ease);
+}
+
+.pn-type .ico {
+  color: var(--c-text-3);
+  transition: color var(--ease);
+}
+
+.pn-type span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pn-type:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+
+.pn-type:hover .ico {
+  color: var(--c-text-2);
+}
+
+/* 正在画的那一类：浅蓝底 + 蓝字 + 蓝边（同「选中」这一套语言，不铺实心主色） */
+.pn-type.on,
+.pn-type.on:hover {
+  background: var(--c-primary-bg);
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+  font-weight: 500;
+}
+
+.pn-type.on .ico {
+  color: var(--c-primary);
+}
+
+/* ---------------- 已绘图形列表（面板主体） ----------------
+   ★ 整行就是「选中」按钮：点一下 → 聚焦 + 右侧样式面板滑出来。
+     原来行尾还挂着一个写着「选中」的小按钮，和「点这一行」是同一件事 ——
+     两处入口只会让人犹豫点哪个。行尾只留两个真正独立的作用：显隐、删除。 */
+.pn-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 8px 8px;
+}
+
+.shape-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 4px 5px 8px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background-color var(--ease), box-shadow var(--ease);
+}
+
+.shape-row:hover {
+  background: var(--c-hover);
+}
+
+/* 当前聚焦的那一条：浅蓝底 + 左侧一条细蓝强调线 + 蓝字。
+   ★ 不铺深蓝：这块面板有二十来行，一行实心深蓝会把整块面板压歪。 */
+.shape-row.on {
+  background: var(--c-primary-bg);
+  box-shadow: inset 2px 0 0 var(--c-primary);
+}
+
+/* 隐藏的行：置灰但仍留在列表里 —— 藏起来不等于删掉，得能一眼看出「它在、只是没显示」。
+   ★ 光标也换掉：这一行点下去不会有反应（隐藏的图形没手柄可抓），别给「可点」的错觉 */
+.shape-row.off {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* 第一行：类型标签 + 行尾动作 */
+.row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 第二行：编号 + 描述 */
+.row-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.shape-row .sp {
+  flex: none;
+  /* 编号是 2~3 个字符（p1 / pg1），给个下限让第二列的描述对齐 —— 
+     差一个字符就是 6px 的参差，一列扫下来很显眼 */
+  min-width: 24px;
+  color: var(--c-text-4);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shape-row.on .sp {
+  color: var(--c-primary);
+  font-weight: 500;
+}
+
+.shape-row .desc {
+  flex: 1;
+  min-width: 0;
+  color: var(--c-text-2);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 行尾两枚动作按钮：平时压暗、指向这一行才浮出来 —— 二十行同时亮着四个图标太吵；
+   但**不是** hover 才出现（隐藏/删除得能一眼找到），只是把对比度收一档 */
+.row-acts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+  opacity: 0.62;
+  transition: opacity var(--ease);
+}
+
+.shape-row:hover .row-acts {
+  opacity: 1;
+}
+
+.row-act {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--c-text-3);
+  cursor: pointer;
+  transition: background-color var(--ease), color var(--ease);
+}
+
+.row-act:hover {
+  background: var(--c-hover-strong);
+  color: var(--c-text);
+}
+
+.row-act.danger:hover {
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
+}
+
+/* 空态 / 无匹配：列表、类型选择器共用一句话 */
+.pn-empty {
+  padding: 6px 2px;
+  color: var(--c-text-4);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.pn-empty b {
+  color: var(--c-text-3);
+  font-weight: 500;
+}
+
+/* ---------------- 类型标签 ----------------
+   它是**图例**：一眼扫过去要能分辨「这是哪一类标注」，所以保留色相区分；
+   但渲染从「实心色块 + 白字」换成「浅底 + 彩字 + 细描边」——
+   41 行实心高饱和色块是这块面板最大的杂色源，换成 chip 之后整列立刻安静。
+
+   每个类型只声明一个 `--tag` 基色，底色 / 描边由 color-mix 派生。
+   ★ 不支持 color-mix 的浏览器会丢掉底色与描边，只剩彩色文字 —— 仍然可读，
+     是**故意**挑的降级方向（比「一片黑底」好得多）。 */
+.tag {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--tag, var(--c-text-3)) 28%, #fff);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--tag, var(--c-text-3)) 11%, #fff);
+  color: var(--tag, var(--c-text-3));
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+.tag-point { --tag: #dc2626; }
+.tag-line { --tag: #7c3aed; }
+.tag-polygon { --tag: #2563eb; }
+.tag-circle { --tag: #059669; }
+.tag-rect { --tag: #ea580c; }
+.tag-ellipse { --tag: #9333ea; }
+.tag-sector { --tag: #b91c1c; }
+/* 集结地标注：与扇形同族（都是「几击成形的一块不规则面」），取同一个红色系压深一档 */
+.tag-assembly { --tag: #7f1d1d; }
+.tag-image { --tag: #0f766e; }
+.tag-path { --tag: #e11d48; }
+.tag-distance { --tag: #0d9488; }
+.tag-area { --tag: #b45309; }
+.tag-leader { --tag: #4f46e5; }
+.tag-leaderCoord { --tag: #0284c7; }
+/* 文字标注 / 曲线标注：沿用「字典里每个类型一个色块」的老规矩 */
+.tag-text { --tag: #7c3aed; }
+/* 富文本标注：与文字标注同一族（同一套交互、只是内容带行内样式），
+   同紫系再压深一档（气泡标注那档留给气泡） */
+.tag-richText { --tag: #5b21b6; }
+.tag-curve { --tag: #0d7d6a; }
+/* 闭合曲面标注：与曲线标注同族（都是「点连成光滑曲线」），且同为曲线面族，
+   取同一个青绿系但压深一档 —— 一个不闭合、一个闭合成面 */
+.tag-closedCurve { --tag: #065f4b; }
+/* 双箭头标注（钳击箭头）：箭头语义，取一个醒目暖橙，跟曲线面的青绿、集结地的暗红都拉开 */
+.tag-doubleArrow { --tag: #ea580c; }
+/* 细直箭头标注（单尖头直箭头）：同为箭头一族，用暗金跟橙色的双箭头拉开一档 */
+.tag-fineArrow { --tag: #a16207; }
+/* 直箭头标注（块状箭头）：同为箭头一族，紧挨着细直箭头再压暗一档 */
+.tag-straightArrow { --tag: #854d0e; }
+/* 突击方向标注：箭头一族的第三种，再压暗一档（同标志旗三兄弟的做法） */
+.tag-assaultDirection { --tag: #713f12; }
+/* 进攻方向 / 进攻方向（尾）：多点绸带是另一族，换到黄绿系第三、四档 */
+.tag-attackArrow { --tag: #4d7c0f; }
+.tag-tailedAttackArrow { --tag: #3f6212; }
+/* 分队战斗行动 / 分队战斗行动（尾）：跟进攻方向同一族，黄绿系再压暗两档 */
+.tag-squadCombat { --tag: #365314; }
+.tag-tailedSquadCombat { --tag: #29400f; }
+/* 弓形面标注：三点定圆的弧面，同「几击成形的规则面」一族，跟扇形同一红系压深一档 */
+.tag-lune { --tag: #991b1b; }
+/* 弧线标注：与弓形面同一套定圆算法的纯线，同族再压暗一档 */
+.tag-arc { --tag: #6b1717; }
+/* 平行线 / 垂直线标注（新画类型，非移植）：几何辅助线一族，用青灰蓝与弧线族的暗红拉开 */
+.tag-parallel { --tag: #475569; }
+.tag-perpendicular { --tag: #334155; }
+/* 圆环标注（新画类型，非移植）：规则几何面一族，跟圆形同一绿系压深一档 */
+.tag-annulus { --tag: #047857; }
+/* 气泡标注（新画类型，非移植）：点一下即成的文字气泡，跟文字标注同一紫系压深一档 */
+.tag-bubble { --tag: #6d28d9; }
+/* 标志旗标注：两击成形的标记，用一个暖色跟线 / 面那几族区分开 */
+.tag-flag { --tag: #db2777; }
+/* 三角标志旗帜标注：与标志旗标注同一族的第二种，色相相同、明度压暗一档 */
+.tag-flagTri { --tag: #9d174d; }
+/* 曲线标志旗标注：同族第三种，往紫的一侧挪一点，免得跟三角旗的深玫红糊在一起 */
+.tag-flagWave { --tag: #7e22ce; }
+/* 自由线标注：与折线标注同族（都是一条线），取同一个青色系但压深一档 */
+.tag-freeLine { --tag: #0f766e; }
+/* 自由面标注：与多边形标注同族（都是一块面），取同一个橙色系但压深一档 */
+.tag-freeArea { --tag: #92400e; }
+/* 「沿路径铺图案」那一族（铁路 / 国界 / 高压线 / 管道，四种共用 shapes/line-deco.ts 基类）：
+   都是**线状地物**（对地物本身作图，而不是画一块面或一条辅助线），所以不用同一色相的
+   深浅四档 —— 四个挤在一条灰带上谁也认不出谁。取四个互不相近的暗色。 */
+.tag-railway { --tag: #57534e; }
+.tag-border { --tag: #3730a3; }
+.tag-powerline { --tag: #6d28d9; }
+.tag-pipeline { --tag: #075985; }
+
+/* 说明文案 */
+#panel .note {
+  color: var(--c-text-3);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* ---------------- 折叠说明（导出图片那种长解释） ----------------
+   一段六行的「为什么慢 / 会切成几张」写在面板里，比控件本身还高。收成一行小字，
+   要读的人点开。 */
+.pn-toggle {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 6px 9px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-hover);
+  color: var(--c-text-3);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ease), border-color var(--ease), color var(--ease);
+}
+
+.pn-toggle:hover {
+  background: var(--c-hover-strong);
+  border-color: var(--c-border-strong);
+  color: var(--c-text-2);
+}
+
+.pn-toggle::before {
+  content: '▸ ';
+  color: var(--c-text-4);
+}
+
+.pn-toggle.open::before {
+  content: '▾ ';
+}
+
+.pn-toggle-body {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: var(--c-hover);
+  border-radius: var(--r-sm);
+  color: var(--c-text-3);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.pn-toggle-body b {
+  color: var(--c-text-2);
+  font-weight: 500;
+}
+
+/* ---------------- 建图卡片 ----------------
+   地图还没建起来时，整页只有这一件事可做 —— 于是左面板、底图按钮全都让位，
+   屏幕正中一张卡片。原来这一块是面板里的第一段，埋在 320px 卡片的顶部：
+   空地图时看上去像「面板坏了」，而不是「该填 token 了」。 */
+.gate {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 卡片之外的区域照旧能点（地图容器在底下，无妨），只有卡片收事件 */
+  pointer-events: none;
+  /* 登场动画挂在浮层上（内层卡片不动，省得两处各写一遍）。
+     见上面 pn-gate-in 那段：走 CSS 时间线，不走 <Transition> 的类。 */
+  animation: pn-gate-in 0.2s var(--ease);
+}
+
+.gate-card {
+  pointer-events: auto;
+  width: 330px;
+  padding: 18px 18px 16px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-3);
+}
+
+.gate-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--c-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.gate-title .ico {
+  color: var(--c-primary);
+}
+
+.gate-sub {
+  margin: 6px 0 12px;
+  color: var(--c-text-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 「输入框 + 按钮」一行（建图卡片 / 设置里的换 token 都用它） */
+.pn-field {
+  display: flex;
+  gap: 6px;
+}
+
+.pn-field .el-input {
+  flex: 1;
+}
+
+.gate-foot {
+  margin-top: 10px;
+  color: var(--c-text-4);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.gate-foot b {
+  color: var(--c-text-3);
+  font-weight: 500;
+}

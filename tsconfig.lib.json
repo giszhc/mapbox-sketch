@@ -1,0 +1,37 @@
+{
+  "//": "库源码的类型检查配置。★ 绝不 include .vue / demo —— 库与 demo 必须是两个独立编译单元。",
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": [],
+
+    "strict": true,
+    "noImplicitOverride": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false,
+    "useUnknownInCatchVariables": false,
+    "exactOptionalPropertyTypes": false,
+    "allowJs": false,
+    "isolatedModules": true,
+
+    // ★ 关键：强制 mapbox-gl 只能写 `import type`，构建必然擦除，保证零运行时依赖。
+    // （注意别写成 "//verbatimModuleSyntax" 这种注释键 —— 会被当成未知选项直接报错）
+    "verbatimModuleSyntax": true,
+
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "declaration": true,
+    "stripInternal": true,
+
+    // 用相对路径的 paths、不写 baseUrl：写法更干净，也免得日后升到 TypeScript 7
+    // （已移除 baseUrl）时还要回头改。
+    "paths": {
+      "@lib/*": ["./src/lib/*"]
+    }
+  },
+  "include": ["src/lib/**/*.ts"]
+}
