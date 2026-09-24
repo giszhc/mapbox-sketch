@@ -11,7 +11,9 @@ pnpm dev
 pnpm build:example
 ```
 
-在仓库根目录执行命令。应用启动/构建前会先构建本地绘制引擎。应用使用 Mapbox GL，首次使用需在页面设置中填写 Access Token。
+在仓库根目录执行命令。应用启动/构建前会先构建本地绘制引擎。应用使用 Mapbox GL；弹窗默认值读取 `VITE_MAPBOX_DEFAULT_TOKEN`，用户可以在页面设置中替换。
+
+本地开发可在 `example/.env.local` 中配置 `VITE_MAPBOX_DEFAULT_TOKEN`。GitHub Pages 部署时，在仓库 **Settings → Secrets and variables → Actions → Variables** 新建同名 Repository variable，workflow 会将它作为 Demo 的弹窗默认值。该 Mapbox `pk.` token 会进入浏览器构建产物，属于公开客户端 token，请在 Mapbox 控制台限制允许的 URL 和权限范围。
 
 ## 大纸导出
 

@@ -63,6 +63,9 @@ import { onMounted, ref } from 'vue';
 import AppIcon from './AppIcon.vue';
 import { useSketchContext } from '../use-sketch';
 
+/** 由本地 .env.local 或 GitHub Actions 仓库变量提供；用户仍可在弹窗中替换。 */
+const DEFAULT_MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_DEFAULT_TOKEN || '';
+
 const props = withDefaults(defineProps<{
   variant?: 'gate' | 'inline';
   /**
@@ -78,7 +81,8 @@ const alive = sk.alive;
 
 const emit = defineEmits<{ (e: 'mount', token: string): void }>();
 
-const tokenInput = ref(sk.readToken());
+const savedToken = sk.readToken();
+const tokenInput = ref(savedToken || DEFAULT_MAPBOX_TOKEN);
 
 function submit(): void {
   const t = tokenInput.value.trim();
@@ -92,6 +96,6 @@ function submit(): void {
 // 已有 token 时自动建图（与老 demo 行为一致）。
 // ★ 只有卡片形态 + 调用方开了 `auto` 才这么做 —— 见 props 里那段注释。
 onMounted(() => {
-  if (props.variant === 'gate' && props.auto && tokenInput.value.trim()) submit();
+  if (props.variant === 'gate' && props.auto && savedToken.trim()) submit();
 });
 </script>

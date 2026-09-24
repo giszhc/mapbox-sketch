@@ -1,5 +1,6 @@
 node_modules/
 dist/
 *.tsbuildinfo
+.env.local
 src/app/auto-imports.d.ts
 src/app/components.d.ts

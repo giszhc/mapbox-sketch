@@ -39,6 +39,8 @@ jobs:
       - name: Set GitHub Pages base path
         run: echo "VITE_BASE_PATH=/${GITHUB_REPOSITORY#*/}/" >> "$GITHUB_ENV"
       - name: Build engine and example
+        env:
+          VITE_MAPBOX_DEFAULT_TOKEN: ${{ vars.VITE_MAPBOX_DEFAULT_TOKEN }}
         run: pnpm build:example
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
