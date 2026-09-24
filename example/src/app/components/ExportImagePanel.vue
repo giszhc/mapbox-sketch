@@ -35,8 +35,8 @@
   5. 「合并服务」那个状态点**不拦任何东西**：连不上就照常导出，只是产物从「一张大图」
      变成「一包 zip」。合并是**锦上添花**，导出本身永不因为后端挂了而失败。
 
-  6. 后端只负责**合并前端导出的切片**，不负责地图渲染。每个切片都必须能在本机画布预算内完成；
-     单块仍超预算时，降低 dpi 或缩小纸张后再导出。
+  6. 默认在本机渲染；打开「云打印」后，绘制数据和出图参数会交给独立服务渲染并合并，
+     不受本机画布预算限制。云打印服务不可用时会明确报错，不会暗中改走本机。
 
   7. 「高清底图」默认**关**（与库的默认**相反**，理由见桥里 `exportHd` 那段）：关掉时底图
      拿屏幕上现成的这一级放大 —— 快；打开才另去下深层瓦片，开关一开就顶出一行「必然更久」
@@ -57,6 +57,24 @@
       慢的底图服务要几分钟。
       <b>大纸在高 dpi 下整张会超出浏览器的画布上限</b>（A0 横 @300dpi 有 1.4 亿像素），
       这时系统会<b>自动切成几张完整的标准纸</b>，下面那行会写清切成了几张、每块多大
+    </div>
+
+    <div class="form-row">
+      <span class="label">云打印</span>
+      <el-switch v-model="cloud" :disabled="!alive || busy" />
+    </div>
+    <div v-if="cloud" class="cloud-state" :class="{ bad: !cloudReady }">
+      <template v-if="cloudReady">
+        绘制数据会发送到服务端渲染并合并；大图不受本机画布预算限制。
+      </template>
+      <template v-else-if="merge.status === 'checking'">正在检查云打印服务…</template>
+      <template v-else>
+        云打印不可用（{{ cloudReason }}）。请设置服务地址并确认服务端已安装 Chromium，
+        或关闭云打印改用本机导出。
+      </template>
+      <button class="merge-set" type="button" @click="showMerge = !showMerge">
+        {{ showMerge ? '收起服务设置' : '设置服务地址' }}
+      </button>
     </div>
 
     <div class="form-row">
@@ -182,8 +200,8 @@
       <template v-else>先加载地图，这里会显示将要导出的像素尺寸</template>
     </div>
 
-    <!-- 合并服务只负责拼接本机切片；没有地址或服务不可用时下载 ZIP。 -->
-    <div v-if="exportGrid" class="merge-row">
+    <!-- 本机切片合并设置；云打印使用同一服务地址的 /render 接口。 -->
+    <div v-if="exportGrid && !cloud" class="merge-row">
       <span class="merge-state">
         <template v-if="merge.status === 'checking'">正在检查合并服务…</template>
         <template v-else-if="merge.status === 'ok'">合并服务已连接，导出后合并成一张大图</template>
@@ -208,8 +226,13 @@
       <!-- 连不上时把地址 / 服务状态原因展示出来，便于修正配置。 -->
       <div v-if="merge.status === 'down'" class="merge-reason">{{ merge.reason }}</div>
       <div class="merge-hint">
-        填写独立 Node 合并服务的地址并点击「重连」即可启用合并；留空或服务不可用时会直接下载 ZIP，
-        其中包含按序号命名的切片和合并清单。
+        <template v-if="cloud">
+          云打印请求独立服务的 <code>/render</code> 接口。失败会显示原因，不会自动改成本机出图。
+        </template>
+        <template v-else>
+          填写独立 Node 合并服务的地址并点击「保存并连接」即可启用合并；留空或服务不可用时会直接下载 ZIP，
+          其中包含按序号命名的切片和合并清单。
+        </template>
       </div>
     </div>
 
@@ -217,6 +240,7 @@
       <el-button type="primary" :disabled="!alive || busy || localBlocked" @click="onExport">
         <AppIcon name="image" :size="14" />
         <template v-if="busy">导出中…</template>
+        <template v-else-if="cloud">云打印出图</template>
         <template v-else-if="exportGrid && canMerge">导出大图（合并）</template>
         <template v-else-if="exportGrid">导出 {{ exportGrid.count }} 张（zip）</template>
         <template v-else>导出并下载</template>
@@ -243,6 +267,7 @@ import { downloadBlob, imageFileName } from '../file-io';
 import {
   MERGE_URL_PLACEHOLDER, mergeServiceUrl, probeMergeService, saveMergeServiceUrl,
 } from '../merge-service';
+import type { MergeHealth } from '../merge-service';
 
 const sk = useSketchContext();
 // ★ 同 PanelFooter：必须解构到顶层绑定，模板里的 proxyRefs 才会自动解包
@@ -252,7 +277,7 @@ const {
   exportPaperLabel, exportPaperMm,
   exportCustomW: customW, exportCustomH: customH,
   exportDpi: dpi, exportFormat: format, exportHd: hd,
-  canExportLocally,
+  exportCloud: cloud, exportServerSide, canExportLocally,
   exportGrid, mergeSupported, mergeWait,
 } = sk;
 
@@ -361,7 +386,7 @@ function pxText(n: number): string {
 type MergeState =
   | { status: 'idle' }
   | { status: 'checking' }
-  | { status: 'ok' }
+  | { status: 'ok'; health: MergeHealth }
   | { status: 'down'; reason: string };
 
 const merge = ref<MergeState>({ status: 'idle' });
@@ -386,7 +411,7 @@ async function probe(): Promise<void> {
   merge.value = { status: 'checking' };
   const r = await probeMergeService(url);
   if (seq !== probeSeq) return;
-  merge.value = r.ok ? { status: 'ok' } : { status: 'down', reason: r.reason };
+  merge.value = r.ok ? { status: 'ok', health: r.health } : { status: 'down', reason: r.reason };
 }
 
 /** 地址栏变了重新探测；留空时回到 ZIP 导出状态。 */
@@ -412,6 +437,19 @@ onMounted(() => {
 /** 这次导出会不会走「合并」那条路：能合并 + 服务在 + 确实分了块 */
 const canMerge = computed<boolean>(() => merge.value.status === 'ok' && mergeSupported.value);
 
+/** /health 同时报告云打印能力；旧版合并服务仍可合并，但不能标记为云打印可用。 */
+const cloudReady = computed<boolean>(
+  () => merge.value.status === 'ok' && merge.value.health.render === true,
+);
+const cloudReason = computed<string>(() => {
+  if (merge.value.status === 'idle') return '未填写服务地址';
+  if (merge.value.status === 'down') return merge.value.reason;
+  if (merge.value.status === 'ok') {
+    return merge.value.health.renderReason || '服务端云打印未就绪，请更新服务并安装 Chromium';
+  }
+  return '';
+});
+
 /* ---------------------------------------------------------------------
  * 本机可导出性
  * ------------------------------------------------------------------- */
@@ -424,14 +462,14 @@ const localOk = computed<boolean>(() => canExportLocally(dpi.value));
  * 只在库自己的规划**明确报警**（切到最小仍超预算）时才置灰，不做任何猜测 ——
  *   宁可让用户点下去看库那句中文错误，也不要靠一个自己推的条件把人挡在外面。
  */
-const localBlocked = computed<boolean>(() => !localOk.value);
+const localBlocked = computed<boolean>(() => !cloud.value && !localOk.value);
 
 /**
  * 分辨率下拉里的文案。本机出不来时直接说明需要降低 dpi 或更换纸张 ——
  * 用户是在**选 dpi 的那一刻**需要知道这件事，而不是选完之后去看别处的提示。
  */
 function dpiLabel(d: number): string {
-  return !canExportLocally(d)
+  return !cloud.value && !canExportLocally(d)
     ? `${d} dpi（本机导不出）`
     : `${d} dpi`;
 }
@@ -444,6 +482,11 @@ function dpiLabel(d: number): string {
 const ext = computed(() => (format.value === 'jpeg' ? 'jpg' : 'png'));
 
 async function onExport(): Promise<void> {
+  if (cloud.value) {
+    await exportServerSide();
+    return;
+  }
+
   // 下载放组件里（而不是桥）：桥要保持纯转交才跑得进 vitest，
   // 而 jsdom 没有 URL.createObjectURL —— 同 PanelFooter 的分工
   const grid = exportGrid.value;
@@ -589,6 +632,27 @@ async function onExport(): Promise<void> {
 }
 
 /* 合并服务那一行：状态左、设置按钮右 */
+.cloud-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 2px;
+  padding: 7px 9px;
+  background: var(--c-hover);
+  border: 1px solid var(--c-border-soft);
+  border-radius: var(--r-md);
+  color: var(--c-text-3);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.cloud-state.bad {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+}
+
 .merge-row {
   display: flex;
   align-items: center;

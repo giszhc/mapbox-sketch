@@ -21,6 +21,8 @@ pnpm build:example
 - 地址留空时，不访问后端，直接下载包含切片和清单的 ZIP；
 - 地址不可用或合并失败时，同样回退为下载 ZIP。
 
-只负责合并的 Node 服务单独托管在 `giszhc/mapbox-cloud-print-service`。在导出设置中填写服务地址即可；前端项目本身不包含或启动后端。
+只负责合并和云打印的 Node 服务单独托管在 `giszhc/mapbox-cloud-print-service`，默认地址是 `http://127.0.0.1:8900`。在导出设置中填写服务地址即可；前端项目本身不包含或启动后端。
+
+需要绕过本机画布尺寸限制时，在导出面板打开「云打印」。服务端通过 `/render` 渲染整张 PNG/JPEG，需预先安装 Chromium。若云打印服务未就绪或请求失败，页面会显示错误，不会自动改用本机出图。
 
 部署到 GitHub Pages 时，根目录的 GitHub Actions workflow 会自动构建并发布本 Demo；首次部署需先在仓库 Settings → Pages 中将 Source 设为 GitHub Actions。

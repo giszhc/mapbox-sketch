@@ -18,7 +18,7 @@
 /**
  * 示例地址只作输入提示，不会自动连接。留空代表关闭后端合并，分块完成后直接下载 ZIP。
  */
-export const MERGE_URL_PLACEHOLDER = 'http://127.0.0.1:8899';
+export const MERGE_URL_PLACEHOLDER = 'http://127.0.0.1:8900';
 
 /** localStorage 的键。带上前缀，免得与别的东西撞名 */
 const STORAGE_KEY = 'mapbox-sketch-drawing-merge-url';
@@ -128,6 +128,10 @@ export interface MergeHealth {
   busy: boolean;
   maxUploadMb: number;
   maxBandMb: number;
+  /** 服务端云打印是否可用（render harness 与 Playwright 均已就绪） */
+  render?: boolean;
+  /** 云打印不可用时的服务端原因 */
+  renderReason?: string;
 }
 
 export type MergeProbe = { ok: true; health: MergeHealth } | { ok: false; reason: string };
@@ -151,6 +155,8 @@ export async function probeMergeService(url: string): Promise<MergeProbe> {
         busy: h.busy === true,
         maxUploadMb: Number(h.maxUploadMb) || 0,
         maxBandMb: Number(h.maxBandMb) || 0,
+        render: h.render === true,
+        renderReason: typeof h.renderReason === 'string' ? h.renderReason : '',
       },
     };
   } catch (err) {
@@ -176,7 +182,7 @@ const PROGRESS_TIMEOUT_MS = 3_000;
  */
 export interface MergeProgress {
   /** 服务端在跑的是哪一单：渲染中 / 拼合中 */
-  job: 'merge';
+  job: 'merge' | 'render';
   /** 服务端写好的中文，页面直接显示（如「正在拼合（3/16 块）」） */
   label: string;
   done: number;
@@ -204,7 +210,7 @@ export async function fetchMergeProgress(url: string): Promise<MergeProgress | n
     });
     if (!res.ok) return null;
     const p = await res.json() as Partial<MergeProgress>;
-    if (p.job !== 'merge') return null;   // 'idle' / 其它 → 没在跑
+    if (p.job !== 'merge' && p.job !== 'render') return null; // 'idle' / 其它 → 没在跑
     return {
       job: p.job,
       label: typeof p.label === 'string' ? p.label : '',

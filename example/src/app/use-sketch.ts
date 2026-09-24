@@ -25,7 +25,7 @@ import type {
 import type { Map as MapboxMap } from 'mapbox-gl';
 import { createExportMap, createMap, readToken, saveToken } from './create-map';
 import {
-  buildExportZip, buildMergeManifest, imageFileName, zipBlobs, zipFileName,
+  buildExportZip, buildMergeManifest, downloadBlob, imageFileName, zipBlobs, zipFileName,
 } from './file-io';
 import { fetchMergeProgress, mergeServiceUrl, uploadZipForMerge } from './merge-service';
 import type { MergeProgress } from './merge-service';
@@ -1205,6 +1205,9 @@ export function useSketch() {
    */
   const exportHd = ref(false);
 
+  /** 云打印开关：开启后整次出图由服务端渲染，本机不切片、不做本地回退。 */
+  const exportCloud = ref(false);
+
   /**
    * 本机（浏览器）能不能把这一档 dpi 正常导出来。
    *
@@ -1644,6 +1647,102 @@ export function useSketch() {
     }
   }
 
+  /** 将当前绘制数据、地图视角与出图参数交给独立服务 `/render` 云打印。 */
+  async function exportServerSide(): Promise<boolean> {
+    const t = tool.value;
+    const m = map.value;
+    if (!t || !m) { showError('请先加载地图后再导出图片。'); return false; }
+    if (exporting.value) return false;
+
+    const serviceUrl = mergeServiceUrl();
+    if (!serviceUrl) {
+      showError('请先在导出面板中设置合并服务地址，再启用云打印。');
+      return false;
+    }
+
+    const { w, h } = viewportSize.value;
+    if (w <= 0 || h <= 0) {
+      showError('地图容器尺寸为 0，无法出图（容器可能还没显示）。');
+      return false;
+    }
+
+    const dpi = exportDpi.value;
+    const format = exportFormat.value;
+    const paper = exportPaperSpec.value;
+    const center = m.getCenter();
+    const payload = {
+      sketch: t.exportJSON(),
+      viewport: { w, h },
+      view: {
+        center: [center.lng, center.lat] as [number, number],
+        zoom: m.getZoom(),
+        bearing: m.getBearing(),
+        pitch: m.getPitch(),
+      },
+      token: readToken(),
+      style: m.getStyle(),
+      dpi,
+      format,
+      paper,
+      hdBasemap: exportHd.value,
+    };
+
+    exporting.value = true;
+    exportProgress.value = '正在请求服务端云打印…';
+    clearError();
+    exportNotice.value = '';
+    mergeWait.value = '正在请求服务端云打印…';
+    const stopPoll = startServerProgress({
+      url: serviceUrl,
+      onTick: (progress, elapsed) => {
+        const label = progress?.label || '服务端正在渲染与合并…';
+        mergeWait.value = `${label}（已等 ${fmtElapsed(elapsed)}）`;
+        exportTiles.value = progress && progress.total > 0
+          ? { loaded: progress.done, total: progress.total }
+          : null;
+      },
+    });
+
+    try {
+      const response = await fetch(`${serviceUrl.replace(/\/+$/, '')}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        let message = `云打印失败（HTTP ${response.status}）。`;
+        try {
+          const body = await response.json() as { error?: string };
+          if (body.error) message = body.error;
+        } catch { /* 反向代理可能返回 HTML 错误页，保留状态码提示 */ }
+        showError(message);
+        return false;
+      }
+
+      const expectedMime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+      const responseMime = response.headers.get('Content-Type')?.split(';', 1)[0].trim();
+      if (responseMime !== expectedMime) {
+        showError(`云打印返回了 ${responseMime || '未知格式'}，预期 ${expectedMime}。`);
+        return false;
+      }
+
+      const blob = await response.blob();
+      const ext = format === 'jpeg' ? 'jpg' : 'png';
+      downloadBlob(imageFileName(ext, dpi, exportPaperLabel.value), blob);
+      exportNotice.value = `已由服务端云打印：${w}×${h} CSS px @${dpi}dpi。`;
+      return true;
+    } catch (error) {
+      showError(`连不上云打印服务（${(error as Error).message || String(error)}）。请检查服务地址、跨域设置和服务状态。`);
+      return false;
+    } finally {
+      stopPoll();
+      mergeWait.value = null;
+      exportTiles.value = null;
+      exporting.value = false;
+      exportProgress.value = '';
+    }
+  }
+
   /* ---------------- 清空 / 销毁 / 编辑开关 ---------------- */
   /**
    * 清空所有图形。
@@ -1910,6 +2009,8 @@ export function useSketch() {
     exportDpi, exportFormat,
     /* 底图档位（高清 / 当前层级）。三条出图路径都要读，见 exportHd 那段注释 */
     exportHd,
+    /* 云打印：整单交给服务端 `/render`，见 exportServerSide */
+    exportCloud, exportServerSide,
     /* 本机可导出性判断 */
     canExportLocally,
     /* 自动分块 + 服务端合并 */
